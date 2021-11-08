@@ -194,6 +194,10 @@ def menu_view3d_object(self, context):
     self.layout.separator()
     self.layout.operator('mmd_tools.clean_shape_keys')
 
+def menu_outliner_object(self, context):
+    self.layout.separator()
+    self.layout.operator("mmd_tools.make_object_id_data_local")
+
 def header_view3d_pose_draw(self, context):
     obj = context.active_object
     if obj and obj.type == 'ARMATURE' and obj.mode == 'POSE':
@@ -214,6 +218,7 @@ def register():
     bpy.app.handlers.load_post.append(load_handler)
     bpy.types.VIEW3D_HT_header.append(header_view3d_pose_draw)
     bpy.types.VIEW3D_MT_object.append(menu_view3d_object)
+    bpy.types.OUTLINER_MT_object.append(menu_outliner_object)
     if bpy.app.version < (2, 80, 0):
         bpy.types.INFO_MT_file_import.append(menu_func_import)
         bpy.types.INFO_MT_file_export.append(menu_func_export)
@@ -243,7 +248,8 @@ def unregister():
         bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
         bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
         bpy.types.VIEW3D_MT_armature_add.remove(menu_func_armature)
-    bpy.types.VIEW3D_MT_object.append(menu_view3d_object)
+    bpy.types.OUTLINER_MT_object.remove(menu_outliner_object)
+    bpy.types.VIEW3D_MT_object.remove(menu_view3d_object)
     bpy.types.VIEW3D_HT_header.remove(header_view3d_pose_draw)
     bpy.app.handlers.load_post.remove(load_handler)
     properties.unregister()
