@@ -10,6 +10,8 @@ import mmd_tools.core.model as mmd_model
 STATE_INIT = 'STATE_INIT'
 STATE_MAKE_OVERRIDE_LIBRARY_WAITING = 'STATE_MAKE_OVERRIDE_LIBRARY_WAITING'
 STATE_MAKE_OVERRIDE_LIBRARY_RUNNING = 'STATE_MAKE_OVERRIDE_LIBRARY_RUNNING'
+STATE_SELECT_TARGET_OBJECTS_WAITING = 'STATE_SELECT_TARGET_OBJECTS_WAITING'
+STATE_SELECT_TARGET_OBJECTS_RUNNING = 'STATE_SELECT_TARGET_OBJECTS_RUNNING'
 STATE_MAKE_LOCAL_ID_DATA_WAITING = 'STATE_MAKE_LOCAL_ID_DATA_WAITING'
 STATE_MAKE_LOCAL_ID_DATA_RUNNING = 'STATE_MAKE_LOCAL_ID_DATA_RUNNING'
 STATE_COLLAPSE_LEAF_WAITING = 'STATE_COLLAPSE_LEAF_WAITING'
@@ -62,16 +64,27 @@ class SimpleOperator(bpy.types.Operator):
             try:
                 bpy.ops.object.make_override_library()
             finally:
-                self._state = STATE_MAKE_LOCAL_ID_DATA_WAITING
+                self._state = STATE_SELECT_TARGET_OBJECTS_WAITING
             return {'RUNNING_MODAL'}
 
         if self._state == STATE_MAKE_OVERRIDE_LIBRARY_RUNNING:
             return {'RUNNING_MODAL'}
 
+        if self._state == STATE_SELECT_TARGET_OBJECTS_WAITING:
+            self._state = STATE_SELECT_TARGET_OBJECTS_RUNNING
+            try:
+                self.select_target_objects(context)
+            finally:
+                self._state = STATE_MAKE_LOCAL_ID_DATA_WAITING
+            return {'RUNNING_MODAL'}
+
+        if self._state == STATE_SELECT_TARGET_OBJECTS_RUNNING:
+            return {'RUNNING_MODAL'}
+
         if self._state == STATE_MAKE_LOCAL_ID_DATA_WAITING:
             self._state = STATE_MAKE_LOCAL_ID_DATA_RUNNING
             try:
-                self.__execute(context)
+                bpy.ops.outliner.id_operation(type='LOCAL')
             finally:
                 self._state = STATE_COLLAPSE_LEAF_WAITING
             return {'RUNNING_MODAL'}
@@ -103,21 +116,16 @@ class SimpleOperator(bpy.types.Operator):
 
     def execute(self, context):
         print('execute')
-        print('start: bpy.ops.object.make_override_library')
-        bpy.ops.object.make_override_library()
-        print('end: bpy.ops.object.make_override_library')
         return {'FINISHED'}
 
-    def __execute(self, context):
-        # bpy.ops.object.make_override_library()
-
+    def select_target_objects(self, context):
         root_object = mmd_model.Model.findRoot(context.selected_objects[0])
         model = mmd_model.Model(root_object)
 
-        object_visibilities = dict()
+        self._object_visibilities = dict()
 
         def force_show_object(obj):
-            object_visibilities[obj.name] = {
+            self._object_visibilities[obj.name] = {
                 'hide': obj.hide_get(),
                 'hide_select': obj.hide_select,
                 'hide_viewport': obj.hide_viewport,
@@ -127,7 +135,7 @@ class SimpleOperator(bpy.types.Operator):
             obj.hide_set(False)
 
         def reset_object_visibilities():
-            for object_name, visibility in object_visibilities.items():
+            for object_name, visibility in self._object_visibilities.items():
                 obj = bpy.data.objects[object_name]
                 obj.hide_set(visibility['hide'])
                 obj.hide_viewport = visibility['hide_viewport']
@@ -154,16 +162,3 @@ class SimpleOperator(bpy.types.Operator):
         select_children(model.rigidGroupObject())
         select_children(model.jointGroupObject())
         select_children(model.temporaryGroupObject())
-
-        # bpy.context.view_layer.update()
-        outliner_context = context.copy()
-        bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-        bpy.ops.outliner.id_operation(outliner_context, type='LOCAL')
-
-        # reset_object_visibilities()
-
-        # bpy.ops.outliner.select_walk(outliner_context, direction='LEFT')
-        # bpy.ops.outliner.select_all(outliner_context, action='DESELECT')
-        # bpy.ops.outliner.hide(outliner_context)
-
-        return {'FINISHED'}
