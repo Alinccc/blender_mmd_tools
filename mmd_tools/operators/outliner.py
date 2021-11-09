@@ -7,6 +7,16 @@ from mmd_tools import register_wrap
 import mmd_tools.core.model as mmd_model
 
 
+STATE_INIT = 'STATE_INIT'
+STATE_MAKE_OVERRIDE_LIBRARY_WAITING = 'STATE_MAKE_OVERRIDE_LIBRARY_WAITING'
+STATE_MAKE_OVERRIDE_LIBRARY_RUNNING = 'STATE_MAKE_OVERRIDE_LIBRARY_RUNNING'
+STATE_MAKE_LOCAL_ID_DATA_WAITING = 'STATE_MAKE_LOCAL_ID_DATA_WAITING'
+STATE_MAKE_LOCAL_ID_DATA_RUNNING = 'STATE_MAKE_LOCAL_ID_DATA_RUNNING'
+STATE_COLLAPSE_LEAF_WAITING = 'STATE_COLLAPSE_LEAF_WAITING'
+STATE_COLLAPSE_LEAF_RUNNING = 'STATE_COLLAPSE_LEAF_RUNNING'
+STATE_FINISHED = 'STATE_FINISHED'
+
+
 @register_wrap
 class SimpleOperator(bpy.types.Operator):
     bl_idname = 'mmd_tools.make_object_id_data_local'
@@ -14,17 +24,94 @@ class SimpleOperator(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
-    def poll(cls, context):
+    def __poll(cls, context):
         return (
             context.area.type == 'OUTLINER'
             and context.object.type == 'EMPTY'
             and context.object.override_library is not None
         )
 
+    _timer = None
+    _state = STATE_INIT
+
+    def __init__(self):
+        pass
+
+    def __del__(self):
+        if self._timer is not None:
+            bpy.context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+
+    def modal(self, context, event):
+        if 'MOUSEMOVE' in event.type:
+            return {'RUNNING_MODAL'}
+
+        if 'WHEEL' in event.type:
+            return {'RUNNING_MODAL'}
+
+        print('modal', event.type, self._state)
+
+        if event.type != 'TIMER':
+            return {'RUNNING_MODAL'}
+
+        if self._state == STATE_INIT:
+            return {'CANCELLED'}
+
+        if self._state == STATE_MAKE_OVERRIDE_LIBRARY_WAITING:
+            self._state = STATE_MAKE_OVERRIDE_LIBRARY_RUNNING
+            try:
+                bpy.ops.object.make_override_library()
+            finally:
+                self._state = STATE_MAKE_LOCAL_ID_DATA_WAITING
+            return {'RUNNING_MODAL'}
+
+        if self._state == STATE_MAKE_OVERRIDE_LIBRARY_RUNNING:
+            return {'RUNNING_MODAL'}
+
+        if self._state == STATE_MAKE_LOCAL_ID_DATA_WAITING:
+            self._state = STATE_MAKE_LOCAL_ID_DATA_RUNNING
+            try:
+                self.__execute(context)
+            finally:
+                self._state = STATE_COLLAPSE_LEAF_WAITING
+            return {'RUNNING_MODAL'}
+
+        if self._state == STATE_MAKE_LOCAL_ID_DATA_RUNNING:
+            return {'RUNNING_MODAL'}
+
+        if self._state == STATE_COLLAPSE_LEAF_WAITING:
+            self._state = STATE_COLLAPSE_LEAF_RUNNING
+            try:
+                bpy.ops.outliner.select_walk('INVOKE_DEFAULT', direction='LEFT')
+                bpy.ops.outliner.select_walk('INVOKE_DEFAULT', direction='LEFT')
+                bpy.ops.outliner.select_walk('INVOKE_DEFAULT', direction='LEFT')
+            finally:
+                self._state = STATE_FINISHED
+            return {'RUNNING_MODAL'}
+
+        if self._state == STATE_FINISHED:
+            return {'FINISHED'}
+
+        return {'CANCELLED'}
+
+    def invoke(self, context, event):
+        print('invoke', event.type)
+        self._state = STATE_MAKE_OVERRIDE_LIBRARY_WAITING
+        context.window_manager.event_timer_add(0.1, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
     def execute(self, context):
+        print('execute')
+        print('start: bpy.ops.object.make_override_library')
+        bpy.ops.object.make_override_library()
+        print('end: bpy.ops.object.make_override_library')
+        return {'FINISHED'}
+
+    def __execute(self, context):
         # bpy.ops.object.make_override_library()
 
-        root_object = mmd_model.Model.findRoot(context.active_object)
+        root_object = mmd_model.Model.findRoot(context.selected_objects[0])
         model = mmd_model.Model(root_object)
 
         object_visibilities = dict()
@@ -64,9 +151,9 @@ class SimpleOperator(bpy.types.Operator):
             context.view_layer.objects.active = obj
             bpy.ops.outliner.show_active()
 
-        # select_children(model.rigidGroupObject())
+        select_children(model.rigidGroupObject())
         select_children(model.jointGroupObject())
-        # select_children(model.temporaryGroupObject())
+        select_children(model.temporaryGroupObject())
 
         # bpy.context.view_layer.update()
         outliner_context = context.copy()

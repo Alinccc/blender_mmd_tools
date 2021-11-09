@@ -196,6 +196,7 @@ def menu_view3d_object(self, context):
 
 def menu_outliner_object(self, context):
     self.layout.separator()
+    self.layout.operator_context = 'INVOKE_DEFAULT'
     self.layout.operator("mmd_tools.make_object_id_data_local")
 
 def header_view3d_pose_draw(self, context):
